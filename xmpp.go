@@ -43,10 +43,10 @@ const (
 var DefaultConfig tls.Config
 
 type Client struct {
-	conn net.Conn // connection to server
-	jid string    // Jabber ID for our connection
+	conn   net.Conn // connection to server
+	jid    string   // Jabber ID for our connection
 	domain string
-	p   *xml.Decoder
+	p      *xml.Decoder
 }
 
 func connect(host, user, passwd string) (net.Conn, error) {
@@ -145,26 +145,26 @@ func (c *Client) Close() error {
 }
 
 func saslDigestResponse(username, realm, passwd, nonce, cnonceStr,
-    authenticate, digestUri, nonceCountStr string) string {
-    h := func(text string) []byte {
-        h := md5.New()
-        h.Write([]byte(text))
-        return h.Sum(nil)
-    }
-    hex := func(bytes []byte) string {
-        return fmt.Sprintf("%x", bytes)
-    }
-    kd := func(secret, data string) []byte {
-        return h(secret + ":" + data)
-    }
+	authenticate, digestUri, nonceCountStr string) string {
+	h := func(text string) []byte {
+		h := md5.New()
+		h.Write([]byte(text))
+		return h.Sum(nil)
+	}
+	hex := func(bytes []byte) string {
+		return fmt.Sprintf("%x", bytes)
+	}
+	kd := func(secret, data string) []byte {
+		return h(secret + ":" + data)
+	}
 
-    a1 := string(h(username+":"+realm+":"+passwd)) + ":" +
-        nonce + ":" + cnonceStr
-    a2 := authenticate + ":" + digestUri
-    response := hex(kd(hex(h(a1)), nonce+":"+
-        nonceCountStr+":"+cnonceStr+":auth:"+
-        hex(h(a2))))
-    return response
+	a1 := string(h(username+":"+realm+":"+passwd)) + ":" +
+		nonce + ":" + cnonceStr
+	a2 := authenticate + ":" + digestUri
+	response := hex(kd(hex(h(a1)), nonce+":"+
+		nonceCountStr+":"+cnonceStr+":auth:"+
+		hex(h(a2))))
+	return response
 }
 
 func cnonce() string {
@@ -241,7 +241,7 @@ func (c *Client) init(user, passwd string) error {
 				kv := strings.SplitN(strings.TrimSpace(token), "=", 2)
 				if len(kv) == 2 {
 					if kv[1][0] == '"' && kv[1][len(kv[1])-1] == '"' {
-						kv[1] = kv[1][1:len(kv[1])-1]
+						kv[1] = kv[1][1 : len(kv[1])-1]
 					}
 					tokens[kv[0]] = kv[1]
 				}
@@ -254,7 +254,7 @@ func (c *Client) init(user, passwd string) error {
 			digestUri := "xmpp/" + domain
 			nonceCount := fmt.Sprintf("%08x", 1)
 			digest := saslDigestResponse(user, realm, passwd, nonce, cnonceStr, "AUTHENTICATE", digestUri, nonceCount)
-			message := "username="+user+", realm="+realm+", nonce="+nonce+", cnonce="+cnonceStr+", nc="+nonceCount+", qop="+qop+", digest-uri="+digestUri+", response="+digest+", charset="+charset;
+			message := "username=" + user + ", realm=" + realm + ", nonce=" + nonce + ", cnonce=" + cnonceStr + ", nc=" + nonceCount + ", qop=" + qop + ", digest-uri=" + digestUri + ", response=" + digest + ", charset=" + charset
 			fmt.Fprintf(c.conn, "<response xmlns='%s'>%s</response>\n", nsSASL, base64.StdEncoding.EncodeToString([]byte(message)))
 
 			var rspauth saslRspAuth
@@ -345,6 +345,11 @@ func (c *Client) Recv() (event interface{}, err error) {
 			return Chat{v.From, v.Type, v.Body}, nil
 		case *clientPresence:
 			return Presence{v.From, v.To, v.Type, v.Show}, nil
+		case *clientIQ:
+			if &v.Ping != nil {
+				// PONG!
+				fmt.Fprintf(c.conn, "<iq from='%s' to='%s' id='%s' type='result'/>", v.To, v.From, v.Id)
+			}
 		}
 	}
 	panic("unreachable")
@@ -463,12 +468,13 @@ type clientPresence struct {
 
 type clientIQ struct { // info/query
 	XMLName xml.Name `xml:"jabber:client iq"`
-	From    string   `xml:",attr"`
-	Id      string   `xml:",attr"`
-	To      string   `xml:",attr"`
-	Type    string   `xml:",attr"` // error, get, result, set
+	From    string   `xml:"from,attr"`
+	Id      string   `xml:"id,attr"`
+	To      string   `xml:"to,attr"`
+	Type    string   `xml:"type,attr"` // error, get, result, set
 	Error   clientError
 	Bind    bindBind
+	Ping    xml.Name `xml:"urn:xmpp:ping ping"` // XEP-0199: XMPP Ping
 }
 
 type clientError struct {
