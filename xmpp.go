@@ -46,6 +46,7 @@ type Client struct {
 	conn   net.Conn // connection to server
 	jid    string   // Jabber ID for our connection
 	domain string
+	debug  bool
 	p      *xml.Decoder
 }
 
@@ -98,7 +99,7 @@ func connect(host, user, passwd string) (net.Conn, error) {
 // NewClient creates a new connection to a host given as "hostname" or "hostname:port".
 // If host is not specified, the  DNS SRV should be used to find the host from the domainpart of the JID.
 // Default the port to 5222.
-func NewClient(host, user, passwd string) (*Client, error) {
+func NewClient(host, user, passwd string, debug bool) (*Client, error) {
 	c, err := connect(host, user, passwd)
 	if err != nil {
 		return nil, err
@@ -118,6 +119,8 @@ func NewClient(host, user, passwd string) (*Client, error) {
 
 	client := new(Client)
 	client.conn = tlsconn
+	client.debug = debug
+
 	if err := client.init(user, passwd); err != nil {
 		client.Close()
 		return nil, err
@@ -125,7 +128,7 @@ func NewClient(host, user, passwd string) (*Client, error) {
 	return client, nil
 }
 
-func NewClientNoTLS(host, user, passwd string) (*Client, error) {
+func NewClientNoTLS(host, user, passwd string, debug bool) (*Client, error) {
 	c, err := connect(host, user, passwd)
 	if err != nil {
 		return nil, err
@@ -133,6 +136,8 @@ func NewClientNoTLS(host, user, passwd string) (*Client, error) {
 
 	client := new(Client)
 	client.conn = c
+	client.debug = debug
+
 	if err := client.init(user, passwd); err != nil {
 		client.Close()
 		return nil, err
@@ -179,8 +184,11 @@ func cnonce() string {
 
 func (c *Client) init(user, passwd string) error {
 	// For debugging: the following causes the plaintext of the connection to be duplicated to stdout.
-	//c.p = xml.NewDecoder(tee{c.conn, os.Stdout})
-	c.p = xml.NewDecoder(c.conn)
+	if c.debug {
+		c.p = xml.NewDecoder(tee{c.conn, os.Stdout})
+	} else {
+		c.p = xml.NewDecoder(c.conn)
+	}
 
 	a := strings.SplitN(user, "@", 2)
 	if len(a) != 2 {
@@ -321,9 +329,10 @@ func (c *Client) init(user, passwd string) error {
 }
 
 type Chat struct {
-	Remote string
-	Type   string
-	Text   string
+	Remote  string
+	Type    string
+	Text    string
+	Delayed bool
 }
 
 type Presence struct {
@@ -342,7 +351,8 @@ func (c *Client) Recv() (event interface{}, err error) {
 		}
 		switch v := val.(type) {
 		case *clientMessage:
-			return Chat{v.From, v.Type, v.Body}, nil
+			delayed := v.Delay.From != ""
+			return Chat{v.From, v.Type, v.Body, delayed}, nil
 		case *clientPresence:
 			return Presence{v.From, v.To, v.Type, v.Show}, nil
 		case *clientIQ:
@@ -445,6 +455,16 @@ type clientMessage struct {
 	Subject string `xml:"subject"`
 	Body    string `xml:"body"`
 	Thread  string `xml:"thread"`
+
+	Delay clientDelay
+}
+
+// XEP-0203: XMPP Delay
+
+type clientDelay struct {
+	XMLName xml.Name `xml:"urn:xmpp:delay delay"`
+	From    string   `xml:"from,attr"`
+	Stamp   string   `xml:"stamp,attr"`
 }
 
 type clientText struct {
