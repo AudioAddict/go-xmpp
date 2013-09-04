@@ -510,7 +510,7 @@ func nextStart(p *xml.Decoder) (xml.StartElement, error) {
 	for {
 		t, err := p.Token()
 		if err != nil {
-			log.Fatal("token", err)
+			return xml.StartElement{}, err
 		}
 		switch t := t.(type) {
 		case xml.StartElement:
